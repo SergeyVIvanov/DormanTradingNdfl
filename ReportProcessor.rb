@@ -258,13 +258,60 @@ text_infos = get_text_infos($blocks)
 i = text_infos[0][0].index('BEGINNING BALANCE ')
 raise unless i
 i += 'BEGINNING BALANCE '.size
-puts 'Beginning balance: ' + $blocks[text_infos[0][1][i]].text
+balance = BigDecimal($blocks[text_infos[0][1][i]].text.gsub(',', ''))
 
+executions = []
 text_infos.each do |text_info|
   instrument_commissions = process_table_confirmation(text_info)
-  process_table_purchase_and_sale(text_info, instrument_commissions)
+  executions += process_table_purchase_and_sale(text_info, instrument_commissions)
 end
 
 action_infos = process_tables_journal(text_infos)
-puts action_infos.map { |action_info| "#{action_info[0]}, #{action_info[1]}, #{action_info[2].to_money_string}" }
+# puts action_infos.map { |action_info| "#{action_info[0]}, #{action_info[1]}, #{action_info[2].to_money_string}" }
 
+#################################################################################################################
+investments = BigDecimal("0")
+withdrawals = BigDecimal("0")
+profit = BigDecimal("0")
+
+action_index = 0
+while action_index < action_infos.size
+  action_info = action_infos[action_index]
+
+  case action_info[1]
+  when :ActionKind_Deposit
+    balance += action_info[2]
+    investments += action_info[2]
+  when :ActionKind_MarketDataFee
+    balance -= action_info[2]
+    profit -= action_info[2]
+  when :ActionKind_Withdrawal
+    balance -= action_info[2]
+    withdrawals += action_info[2]
+    #profit -= action_info[2]
+  when :ActionKind_WithdrawalFee
+    balance -= action_info[2]
+    profit -= action_info[2]
+  else
+    raise
+  end
+
+  action_index += 1
+end
+
+execution_index = 0
+while execution_index < executions.size
+  execution = executions[execution_index]
+
+  delta = execution.amount - execution.commission
+  balance += delta
+  profit += delta
+
+  execution_index += 1
+end
+
+puts
+puts "Ending balance: #{balance.to_money_string}"
+puts "Total profit: #{profit.to_money_string}"
+puts "Investments: #{investments.to_money_string}, #{(investments - withdrawals).to_money_string} (after withdrawals)"
+puts "Withdrawals: #{withdrawals.to_money_string}"
