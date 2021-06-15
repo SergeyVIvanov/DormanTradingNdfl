@@ -1,8 +1,8 @@
-require_relative "Instruments"
+require_relative "RubyClassPatches"
 
 class Execution
-  attr_reader :date, :instrument, :instrument_commission, :instrument_date, :is_long, :price
-  attr_accessor :quantity
+  attr_reader :date, :instrument, :instrument_commission, :is_long, :price
+  attr_accessor :multiplier, :quantity
 
   # def self.parse(s)
   #   # 2020-05-28 11:34:30:546|1|8|Execution='329409888512' Instrument='ES 06-20' Account='Y7840' Exchange=Globex Price=3034.75 Quantity=1 Market position=Long Operation=Operation_Add Order='1189882789' Time='05/28/2020 11:34:29'
@@ -21,12 +21,9 @@ class Execution
   #   )
   # end
 
-  def initialize(date, instrument, instrument_date, price, quantity, is_long, instrument_commission)
-    raise unless INSTRUMENTS.has_key?(instrument)
-
+  def initialize(date, instrument, price, quantity, is_long, instrument_commission)
     @date = date
     @instrument = instrument
-    @instrument_date = instrument_date
     @price = price
     @quantity = quantity
     @is_long = is_long
@@ -36,7 +33,7 @@ class Execution
   def <=>(other)
     res = (date <=> other.date)
     res = @instrument <=> other.instrument if res == 0
-    res = @instrument_date <=> other.instrument_date if res == 0
+    # res = @instrument_date <=> other.instrument_date if res == 0
     res = @price <=> other.price if res == 0
     if res == 0 && (@is_long != other.long?)
       res = (@is_long ? -1 : 1)
@@ -45,7 +42,7 @@ class Execution
   end
 
   def amount
-    @price * INSTRUMENTS[@instrument] * signed_quantity
+    @price * @multiplier * signed_quantity
   end
 
   def can_merge(other)
@@ -57,7 +54,7 @@ class Execution
   end
 
   def get_amount(signed_quantity)
-    @price * INSTRUMENTS[@instrument] * signed_quantity
+    @price * @multiplier * signed_quantity
   end
 
   def get_commission(quantity)
@@ -73,7 +70,7 @@ class Execution
   end
 
   def to_s
-    @date.to_s + ', ' + @instrument + ', ' + (long? ? 'buy' : 'sell') + ', ' + @quantity.to_s + ', ' + @price.to_s
+    @date.to_s + ', ' + @instrument + ', ' + (long? ? 'buy' : 'sell') + ', ' + @quantity.to_s + ', ' + @price.to_money_string
   end
 
   def signed_quantity

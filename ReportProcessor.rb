@@ -3,18 +3,8 @@ require "date"
 
 require_relative "RubyClassPatches"
 
-HEADER_COMMON_INFO = '** US DOLLARS **'
-TABLE_HEADER_CONFIRMATION = 'TRADE SETTL AT BUY SELL CONTRACT DESCRIPTION EX PRICE CC DEBIT/CREDIT'
-TABLE_HEADER_OPEN_POSITIONS = 'TRADE CARD AT LONG SHORT CONTRACT DESCRIPTION EX PRICE CC DEBIT/CREDIT'
-TABLE_HEADER_PURCHASE_AND_SALE = 'TRADE SETTL AT LONG SHORT CONTRACT DESCRIPTION EX PRICE CC DEBIT/CREDIT'
-TABLE_HEADER_JOURNAL = 'TRADE SETTL AT LONG SHORT JOURNAL DESCRIPTION EX TRADE PRICE CC DEBIT/CREDIT'
-
-JOURNAL_ACTIONS = {
-  'DATA FEE' => :ActionKind_MarketDataFee,
-  'WT CREDIT' => :ActionKind_Deposit,
-  'WT DEBIT' => :ActionKind_Withdrawal,
-  'WT FEE' => :ActionKind_WithdrawalFee
-}
+require_relative "Consts"
+require_relative "Execution"
 
 class PdfBlock
   def initialize(s)
@@ -56,6 +46,25 @@ class PdfBlock
   attr_reader :kind, :text
 end
 
+def get_date(line, document_year)
+  s = line[0, 7]
+  return nil if s.strip.empty?
+  year = s[6].to_i
+  document_year -= 10 if year > (document_year % 10)
+  year = document_year / 10 * 10 + year
+  begin
+    Date.new(year, s[0, 2].to_i, s[3, 2].to_i)
+  rescue
+    raise line.inspect
+  end
+end
+
+def get_year(text)
+  i = text.index('STATEMENT DATE')
+  i = text.index("\n", i + 'STATEMENT DATE'.size)
+  text[i - 4, 4].to_i
+end
+
 def get_text_infos(blocks)
   text_infos = []
 
@@ -94,8 +103,34 @@ def get_text_infos(blocks)
   text_infos
 end
 
-def process_tables_confirmation(text_infos)
-  
+def process_table_confirmation(text_info)
+  instrument_commissions = {}
+
+  text, block_indexes = text_info
+  lines = read_table(text, block_indexes, TABLE_HEADER_CONFIRMATION)
+  i = 0
+  while i < lines.size
+    line = lines[i]
+    instrument = line[49..78].strip
+    begin
+      i += 1
+      line = lines[i]
+    end until line[0,7].strip.empty?
+    a = line.split
+    count = a[1][0..-2].to_i + a[2][0..-2].to_i
+    commission = BigDecimal('0')
+    begin
+      commission += BigDecimal(a.last[0..-3])
+      i += 1
+      break if i == lines.size
+      line = lines[i]
+      a = line.split
+    end while line[0,7].strip.empty?
+    commission /= count
+    instrument_commissions[instrument] = commission
+  end
+
+  instrument_commissions
 end
 
 def process_tables_journal(text_infos)
@@ -104,17 +139,14 @@ def process_tables_journal(text_infos)
   text_infos.each do |text_info|
     text, block_indexes = text_info
 
-    i = text.index('STATEMENT DATE')
-    i = text.index("\n", i + 'STATEMENT DATE'.size)
-    year = text[i - 4, 4].to_i
+    year = get_year(text)
 
     lines = read_table(text, block_indexes, TABLE_HEADER_JOURNAL)
     next if lines.empty?
-    lines.reject! { |line| line[0,7].strip.empty? }
+    lines.reject! { |line| line[0, 7].strip.empty? }
 
     lines.each do |line|
-      s = line[0,7]
-      date = Date.new(year,  s[0,2].to_i,  s[3,2].to_i)
+      date = get_date(line, year)
       s = line.strip
       s = s[s.rindex(' ') + 1..-1].gsub(',', '')
       s = s[0..-3] if s.end_with?('DR')
@@ -134,6 +166,63 @@ def process_tables_journal(text_infos)
   action_infos
 end
 
+def process_table_purchase_and_sale(text_info, instrument_commissions)
+  executions = []
+
+  text, block_indexes = text_info
+  year = get_year(text)
+
+  lines = read_table(text, block_indexes, TABLE_HEADER_PURCHASE_AND_SALE)
+  i = 0
+  while i < lines.size
+    temp_executions = []
+    sum = BigDecimal('0')
+    loop do
+      line = lines[i]
+
+      date = get_date(line, year)
+      break unless date
+      
+      s = line[19..32].strip
+      is_long = !s.empty?
+      if is_long 
+        quantity = s.to_i
+      else
+        quantity = line[34..47].strip.to_i
+      end
+
+      instrument = line[49..78].strip
+      price = BigDecimal(line[83..93].strip)
+
+      instrument_commission = instrument_commissions[instrument]
+      raise unless instrument_commission
+
+      temp_executions << Execution.new(date, instrument, price, quantity, is_long, instrument_commission)
+
+      sum += price * quantity * (is_long ? -1 : 1)
+
+      i += 1
+    end
+
+    profit = lines[i].split.last
+    is_loss = profit.end_with?('DR')
+    profit = profit[0..-3] if is_loss
+    multiplier = BigDecimal(profit.gsub(',', '')) * (is_loss ? -1 : 1) / sum
+    temp_executions.each { |execution| execution.multiplier = multiplier }
+    executions += temp_executions
+
+    begin
+      i += 1
+      break if i == lines.size
+      line = lines[i]
+    end until get_date(line, year)
+  end
+
+  # puts executions
+  # puts '====================================='
+  executions
+end
+
 def read_table(text, block_indexes, table_header)
   lines = []
 
@@ -147,6 +236,7 @@ def read_table(text, block_indexes, table_header)
     block = $blocks[i - 1]
     w = ((block.x + block.width - left) / char_width).round
     loop do
+      break if $blocks[i].kind != :Text || $blocks[i].text == 'THE' || $blocks[i].text == '**' || $blocks[i].text == '*' && $blocks[i + 1].text == '*'
       line = ' ' * w
       y = $blocks[i].y
       begin
@@ -156,7 +246,6 @@ def read_table(text, block_indexes, table_header)
         i += 1
       end while $blocks[i].kind == :Text && $blocks[i].y == y
       lines << line
-      break if $blocks[i].kind != :Text || $blocks[i].text == '**' || $blocks[i].text == '*' && $blocks[i + 1].text == '*'
     end
   end
 
@@ -172,10 +261,10 @@ i += 'BEGINNING BALANCE '.size
 puts 'Beginning balance: ' + $blocks[text_infos[0][1][i]].text
 
 text_infos.each do |text_info|
-  text, block_indexes = text_info
-  read_table(text, block_indexes, TABLE_HEADER_CONFIRMATION)
+  instrument_commissions = process_table_confirmation(text_info)
+  process_table_purchase_and_sale(text_info, instrument_commissions)
 end
 
 action_infos = process_tables_journal(text_infos)
 puts action_infos.map { |action_info| "#{action_info[0]}, #{action_info[1]}, #{action_info[2].to_money_string}" }
-abort
+
