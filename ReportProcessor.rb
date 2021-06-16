@@ -5,6 +5,7 @@ require_relative "RubyClassPatches"
 
 require_relative "Consts"
 require_relative "Execution"
+require_relative "ExcelReport"
 
 class PdfBlock
   def initialize(s)
@@ -312,6 +313,7 @@ text_infos.each do |text_info|
   process_table_confirmation(text_info, instrument_commissions)
   executions += process_table_purchase_and_sale(text_info, instrument_commissions)
 end
+# optimize_executions(executions)
 
 open_position_executions = process_table_open_positions(text_infos.last, instrument_commissions)
 
@@ -364,8 +366,12 @@ open_position_executions.each do |execution|
   profit -= execution.commission
 end
 
-puts
 puts "Ending balance: #{balance.to_money_string}"
 puts "Total profit: #{profit.to_money_string}"
 puts "Investments: #{investments.to_money_string}, #{(investments - withdrawals).to_money_string} (after withdrawals)"
 puts "Withdrawals: #{withdrawals.to_money_string}"
+
+# puts
+# optimize_executions(executions)
+# puts executions
+ExcelReportGenerator.generate(executions, open_position_executions, action_infos)

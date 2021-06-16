@@ -14,8 +14,8 @@ class Execution
   end
 
   def <=>(other)
-    res = (date <=> other.date)
-    res = @instrument <=> other.instrument if res == 0
+    res = @instrument <=> other.instrument
+    res = (date <=> other.date) if res == 0
     # res = @instrument_date <=> other.instrument_date if res == 0
     res = @price <=> other.price if res == 0
     if res == 0 && (@is_long != other.long?)

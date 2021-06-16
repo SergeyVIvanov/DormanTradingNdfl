@@ -10,3 +10,9 @@ JOURNAL_ACTIONS = {
   'WT DEBIT' => :ActionKind_Withdrawal,
   'WT FEE' => :ActionKind_WithdrawalFee
 }
+
+FILE_NAME_REPORT = "Report.xlsx"
+FILE_NAME_USD_RATES = "USDRates.txt"
+
+MONTH_SHORTS = %w[JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC]
+FORMALIZED_INSTRUMENT = /\A(#{MONTH_SHORTS.join('|')}) \d\d /
