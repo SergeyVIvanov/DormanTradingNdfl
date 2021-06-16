@@ -4,23 +4,6 @@ class Execution
   attr_reader :date, :instrument, :instrument_commission, :is_long, :price
   attr_accessor :multiplier, :quantity
 
-  # def self.parse(s)
-  #   # 2020-05-28 11:34:30:546|1|8|Execution='329409888512' Instrument='ES 06-20' Account='Y7840' Exchange=Globex Price=3034.75 Quantity=1 Market position=Long Operation=Operation_Add Order='1189882789' Time='05/28/2020 11:34:29'
-  #   h = parse_internal(s)
-  #   instrument_info = parse_field_instrument(h["Instrument"])
-
-  #   Execution.new(
-  #     h["Account"],
-  #     h["Order"],
-  #     parse_field_time(h["Time"]),
-  #     instrument_info[0],
-  #     instrument_info[1],
-  #     h["Price"].to_f,
-  #     h["Quantity"].to_i,
-  #     h["Market position"] == "Long"
-  #   )
-  # end
-
   def initialize(date, instrument, price, quantity, is_long, instrument_commission)
     @date = date
     @instrument = instrument

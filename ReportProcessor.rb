@@ -103,14 +103,17 @@ def get_text_infos(blocks)
   text_infos
 end
 
-def process_table_confirmation(text_info)
-  instrument_commissions = {}
+def process_table_confirmation(text_info, instrument_commissions)
+  temp_instrument_commissions = {}
 
   text, block_indexes = text_info
+  year = get_year(text)
   lines = read_table(text, block_indexes, TABLE_HEADER_CONFIRMATION)
+  date = nil
   i = 0
   while i < lines.size
     line = lines[i]
+    date = get_date(line, year) unless date
     instrument = line[49..78].strip
     begin
       i += 1
@@ -127,10 +130,10 @@ def process_table_confirmation(text_info)
       a = line.split
     end while line[0,7].strip.empty?
     commission /= count
-    instrument_commissions[instrument] = commission
+    temp_instrument_commissions[instrument] = commission
   end
 
-  instrument_commissions
+  instrument_commissions[date] = temp_instrument_commissions
 end
 
 def process_tables_journal(text_infos)
@@ -166,6 +169,49 @@ def process_tables_journal(text_infos)
   action_infos
 end
 
+def process_table_open_positions(text_info, instrument_commissions)
+  executions = []
+
+  text, block_indexes = text_info
+  year = get_year(text)
+
+  lines = read_table(text, block_indexes, TABLE_HEADER_OPEN_POSITIONS)
+  i = 0
+  while i < lines.size
+    loop do
+      line = lines[i]
+
+      date = get_date(line, year)
+      break unless date
+
+      s = line[19..32].strip
+      is_long = !s.empty?
+      if is_long 
+        quantity = s.to_i
+      else
+        quantity = line[34..47].strip.to_i
+      end
+
+      instrument = line[49..78].strip
+      price = BigDecimal(line[83..93].strip)
+
+      instrument_commission = instrument_commissions[date][instrument]
+      raise unless instrument_commission
+
+      executions << Execution.new(date, instrument, price, quantity, is_long, instrument_commission)
+
+      i += 1
+    end
+    begin
+      i += 1
+      break if i == lines.size
+      line = lines[i]
+    end until get_date(line, year)
+  end
+
+  executions
+end
+
 def process_table_purchase_and_sale(text_info, instrument_commissions)
   executions = []
 
@@ -194,7 +240,7 @@ def process_table_purchase_and_sale(text_info, instrument_commissions)
       instrument = line[49..78].strip
       price = BigDecimal(line[83..93].strip)
 
-      instrument_commission = instrument_commissions[instrument]
+      instrument_commission = instrument_commissions[date][instrument]
       raise unless instrument_commission
 
       temp_executions << Execution.new(date, instrument, price, quantity, is_long, instrument_commission)
@@ -261,10 +307,13 @@ i += 'BEGINNING BALANCE '.size
 balance = BigDecimal($blocks[text_infos[0][1][i]].text.gsub(',', ''))
 
 executions = []
+instrument_commissions = {}
 text_infos.each do |text_info|
-  instrument_commissions = process_table_confirmation(text_info)
+  process_table_confirmation(text_info, instrument_commissions)
   executions += process_table_purchase_and_sale(text_info, instrument_commissions)
 end
+
+open_position_executions = process_table_open_positions(text_infos.last, instrument_commissions)
 
 action_infos = process_tables_journal(text_infos)
 # puts action_infos.map { |action_info| "#{action_info[0]}, #{action_info[1]}, #{action_info[2].to_money_string}" }
@@ -308,6 +357,11 @@ while execution_index < executions.size
   profit += delta
 
   execution_index += 1
+end
+
+open_position_executions.each do |execution|
+  balance -= execution.commission
+  profit -= execution.commission
 end
 
 puts
