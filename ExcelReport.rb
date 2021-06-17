@@ -4,7 +4,7 @@ require_relative "USDRates"
 
 COLUMNS = {
   Total:                   { Letter: "A" },
-  InstrumentCaption:       { Letter: "B", Header: "Фьючерс" },
+  InstrumentCaption:       { Letter: "B", Header: "Фьючерсный контракт" },
   Date:                    { Letter: "C", Header: "Дата", Format: "dd.mm.yyyy" },
   USDRate:                 { Letter: "D", Header: "Курс USD ЦБ РФ", Format: "0.0000" },
   Quantity:                { Letter: "E", Header: "Кол-во", Format: "0" },
@@ -129,7 +129,7 @@ class ExcelReportGenerator
       col_AmountWithCommissionRUR.write(row_number, "Сумма, руб.")
       (action_infos.select { %i[ActionKind_MarketDataFee ActionKind_WithdrawalFee].include?(_1[1]) }).each do |info|
         row_number += 1
-        col_InstrumentCaption.write(row_number, info[1] == :ActionKind_MarketDataFee ? "Плата за рыночные котировки" : "Комиссия за вывод денежных средств")
+        col_InstrumentCaption.write(row_number, info[1] == :ActionKind_MarketDataFee ? "Плата за рыночные данные" : "Комиссия за вывод денежных средств")
         col_Date.write(row_number, info[0].to_time + 86400)
         col_USDRate.write(row_number, USDRates.get_rate(info[0]))
         col_AmountWithCommissionUSD.write(row_number, -info[2])

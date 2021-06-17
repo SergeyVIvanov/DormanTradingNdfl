@@ -374,4 +374,5 @@ puts "Withdrawals: #{withdrawals.to_money_string}"
 # puts
 # optimize_executions(executions)
 # puts executions
+executions.sort!
 ExcelReportGenerator.generate(executions, open_position_executions, action_infos)
