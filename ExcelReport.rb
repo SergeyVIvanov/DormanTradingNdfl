@@ -8,11 +8,12 @@ COLUMNS = {
   Date:                    { Letter: "C", Header: "Дата", Format: "dd.mm.yyyy" },
   USDRate:                 { Letter: "D", Header: "Курс USD ЦБ РФ", Format: "0.0000" },
   Quantity:                { Letter: "E", Header: "Кол-во", Format: "0" },
-  Price:                   { Letter: "F", Header: "Цена фьючерса", Format: "0.00" },
+  Price:                   { Letter: "F", Header: "Цена фьючерса" },
+  # Price:                   { Letter: "F", Header: "Цена фьючерса", Format: "0.00" },
   AmountUSD:               { Letter: "G", Header: "Сумма сделки, USD", Format: "0.00" },
   CommissionUSD:           { Letter: "H", Header: "Комиссия, USD", Format: "0.00" },
   AmountWithCommissionUSD: { Letter: "I", Header: "Сумма сделки с учётом комиссии, USD", Format: "0.00" },
-  AmountWithCommissionRUR: { Letter: "J", Header: "Сумма сделки с учётом комиссии, руб.", Format: "0.00000000" },
+  AmountWithCommissionRUR: { Letter: "J", Header: "Сумма сделки с учётом комиссии, руб.", Format: "0.000000" },
 }
 
 class Hash
@@ -95,10 +96,16 @@ class ExcelReportGenerator
             execution = temp_executions[i]
 
             col_Quantity.write(row_number, execution.signed_quantity)
-            col_Price.write(row_number, execution.price)
-            col_AmountUSD.write_formula(row_number, "#{col_Quantity.get_cell_ref(row_number)} * #{col_Price.get_cell_ref(row_number)} * #{execution.multiplier}")
+            col_Price.write(row_number, execution.price, get_format_price(execution))
+            
+            v = (execution.signed_quantity * execution.price * execution.multiplier).to_s('F')
+            if index = v.index('.')
+              raise if v.size - index - 1 > 2
+            end
+            col_AmountUSD.write_formula(row_number, "#{col_Quantity.get_cell_ref(row_number)} * #{col_Price.get_cell_ref(row_number)} * #{execution.multiplier}", get_format_amount_usd(execution))
+
             col_CommissionUSD.write(row_number, -execution.commission)
-            col_AmountWithCommissionUSD.write_formula(row_number, "#{col_AmountUSD.get_cell_ref(row_number)} + #{col_CommissionUSD.get_cell_ref(row_number)}")
+            col_AmountWithCommissionUSD.write_formula(row_number, "#{col_AmountUSD.get_cell_ref(row_number)} + #{col_CommissionUSD.get_cell_ref(row_number)}", get_format_amount_with_commission_usd(execution))
             col_AmountWithCommissionRUR.write_formula(row_number, "#{col_AmountWithCommissionUSD.get_cell_ref(row_number)} * #{col_USDRate.get_cell_ref(usd_rate_row_number)}")
             i += 1
             row_number += 1
@@ -120,26 +127,26 @@ class ExcelReportGenerator
         col_Total.write(row_number + 1, "")
       end
 
-      row_number = @worksheet.last_row_number + 1
-      market_data_fee_first_row_number = row_number + 1
-      col_InstrumentCaption.write(row_number, "Прочие комиссии")
-      col_Date.write(row_number, col_Date[:Header])
-      col_USDRate.write(row_number, col_USDRate[:Header])
-      col_AmountWithCommissionUSD.write(row_number, "Сумма, USD")
-      col_AmountWithCommissionRUR.write(row_number, "Сумма, руб.")
-      (action_infos.select { %i[ActionKind_MarketDataFee ActionKind_WithdrawalFee].include?(_1[1]) }).each do |info|
-        row_number += 1
-        col_InstrumentCaption.write(row_number, info[1] == :ActionKind_MarketDataFee ? "Плата за рыночные данные" : "Комиссия за вывод денежных средств")
-        col_Date.write(row_number, info[0].to_time + 86400)
-        col_USDRate.write(row_number, USDRates.get_rate(info[0]))
-        col_AmountWithCommissionUSD.write(row_number, -info[2])
-        col_AmountWithCommissionRUR.write_formula(row_number, "#{col_AmountWithCommissionUSD.get_cell_ref(row_number)} * #{col_USDRate.get_cell_ref(row_number)}")
-      end
-      row_number += 1
-      col_Total.write(row_number, "Сумма:")
-      col_AmountWithCommissionUSD.write_formula(row_number, "SUM(#{col_AmountWithCommissionUSD.get_cell_range_ref(market_data_fee_first_row_number, row_number - 1)})")
-      col_AmountWithCommissionRUR.write_formula(row_number, "ROUNDDOWN(SUM(#{col_AmountWithCommissionRUR.get_cell_range_ref(market_data_fee_first_row_number, row_number - 1)}), 2)")
-      tax_base_cells << col_AmountWithCommissionRUR.get_cell_ref(row_number)
+      # row_number = @worksheet.last_row_number + 1
+      # market_data_fee_first_row_number = row_number + 1
+      # col_InstrumentCaption.write(row_number, "Прочие комиссии")
+      # col_Date.write(row_number, col_Date[:Header])
+      # col_USDRate.write(row_number, col_USDRate[:Header])
+      # col_AmountWithCommissionUSD.write(row_number, "Сумма, USD")
+      # col_AmountWithCommissionRUR.write(row_number, "Сумма, руб.")
+      # (action_infos.select { %i[ActionKind_MarketDataFee ActionKind_WithdrawalFee].include?(_1[1]) }).each do |info|
+      #   row_number += 1
+      #   col_InstrumentCaption.write(row_number, info[1] == :ActionKind_MarketDataFee ? "Плата за рыночные данные" : "Комиссия за вывод денежных средств")
+      #   col_Date.write(row_number, info[0].to_time + 86400)
+      #   col_USDRate.write(row_number, USDRates.get_rate(info[0]))
+      #   col_AmountWithCommissionUSD.write(row_number, -info[2])
+      #   col_AmountWithCommissionRUR.write_formula(row_number, "#{col_AmountWithCommissionUSD.get_cell_ref(row_number)} * #{col_USDRate.get_cell_ref(row_number)}")
+      # end
+      # row_number += 1
+      # col_Total.write(row_number, "Сумма:")
+      # col_AmountWithCommissionUSD.write_formula(row_number, "SUM(#{col_AmountWithCommissionUSD.get_cell_range_ref(market_data_fee_first_row_number, row_number - 1)})")
+      # col_AmountWithCommissionRUR.write_formula(row_number, "ROUNDDOWN(SUM(#{col_AmountWithCommissionRUR.get_cell_range_ref(market_data_fee_first_row_number, row_number - 1)}), 2)")
+      # tax_base_cells << col_AmountWithCommissionRUR.get_cell_ref(row_number)
 
       row_number = @worksheet.last_row_number + 2
       col_Total.write(row_number, "Налоговая база:")
@@ -161,6 +168,18 @@ class ExcelReportGenerator
 
     def apply_column_formats
       COLUMNS.each_value { _1.set_format(_1[:Format]) if _1[:Format] }
+    end
+
+    def get_format_amount_usd(execution)
+      get_number_format(get_precision_amount_usd(execution))
+    end
+
+    def get_format_amount_with_commission_usd(execution)
+      get_number_format(get_precision_amount_usd(execution))
+    end
+
+    def get_format_price(execution)
+      get_number_format(execution.instrument_precision)
     end
 
     def get_instruments(executions)
@@ -186,10 +205,28 @@ class ExcelReportGenerator
       instruments.uniq
     end
 
+    def get_number_format(precision)
+      format = '0'
+      format += '.' + '0' * precision if precision != 0
+      @workbook.number_format(format)
+    end
+
+    def get_precision_amount_usd(execution)
+      # precision = execution.instrument_precision
+      # raise unless execution.multiplier.frac.zero?
+      # s = execution.multiplier.truncate.to_s
+      # while s.end_with?('0')
+      #   precision -= 1
+      #   s = s[0..-2]
+      # end
+      # precision = 2 if precision < 2
+      # precision
+      2
+    end
+
     def update_usd_rates(executions, open_position_executions, action_infos)
       dates = (executions.map { _1.date }) + (open_position_executions.map { _1.date }) + (action_infos.map { _1[0] })
-      min_date = dates.min
-      max_date = dates.max
+      min_date, max_date = dates.minmax
       USDRates.update_rates(min_date, max_date)
     end
   end

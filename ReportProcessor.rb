@@ -3,6 +3,7 @@ require "date"
 
 require_relative "RubyClassPatches"
 
+require_relative "CommandLineParser"
 require_relative "Consts"
 require_relative "Execution"
 require_relative "ExcelReport"
@@ -194,12 +195,19 @@ def process_table_open_positions(text_info, instrument_commissions)
       end
 
       instrument = line[49..78].strip
-      price = BigDecimal(line[83..93].strip)
+
+      s = line[83..93].strip
+      if index = s.index('.')
+        instrument_precision = s.size - index - 1
+      else
+        instrument_precision = 0
+      end
+      price = BigDecimal(s)
 
       instrument_commission = instrument_commissions[date][instrument]
       raise unless instrument_commission
 
-      executions << Execution.new(date, instrument, price, quantity, is_long, instrument_commission)
+      executions << Execution.new(date, instrument, price, quantity, is_long, instrument_commission, instrument_precision)
 
       i += 1
     end
@@ -239,12 +247,19 @@ def process_table_purchase_and_sale(text_info, instrument_commissions)
       end
 
       instrument = line[49..78].strip
-      price = BigDecimal(line[83..93].strip)
+
+      s = line[83..93].strip
+      if index = s.index('.')
+        instrument_precision = s.size - index - 1
+      else
+        instrument_precision = 0
+      end
+      price = BigDecimal(s)
 
       instrument_commission = instrument_commissions[date][instrument]
       raise unless instrument_commission
 
-      temp_executions << Execution.new(date, instrument, price, quantity, is_long, instrument_commission)
+      temp_executions << Execution.new(date, instrument, price, quantity, is_long, instrument_commission, instrument_precision)
 
       sum += price * quantity * (is_long ? -1 : 1)
 
@@ -265,8 +280,6 @@ def process_table_purchase_and_sale(text_info, instrument_commissions)
     end until get_date(line, year)
   end
 
-  # puts executions
-  # puts '====================================='
   executions
 end
 
@@ -298,6 +311,8 @@ def read_table(text, block_indexes, table_header)
 
   lines
 end
+
+$options = parse_command_line
 
 $blocks = File.readlines('D:/Trading/Reports_2021/a.txt').map { |line| PdfBlock.new(line) }
 text_infos = get_text_infos($blocks)
