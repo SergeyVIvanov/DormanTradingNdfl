@@ -3,17 +3,17 @@ require_relative "Consts"
 require_relative "USDRates"
 
 COLUMNS = {
-  Total:                   { Letter: "A" },
-  InstrumentCaption:       { Letter: "B", Header: "Фьючерсный контракт" },
-  Date:                    { Letter: "C", Header: "Дата", Format: "dd.mm.yyyy" },
-  USDRate:                 { Letter: "D", Header: "Курс USD ЦБ РФ", Format: "0.0000" },
-  Quantity:                { Letter: "E", Header: "Кол-во", Format: "0" },
-  Price:                   { Letter: "F", Header: "Цена фьючерса" },
-  # Price:                   { Letter: "F", Header: "Цена фьючерса", Format: "0.00" },
-  AmountUSD:               { Letter: "G", Header: "Сумма сделки, USD", Format: "0.00" },
-  CommissionUSD:           { Letter: "H", Header: "Комиссия, USD", Format: "0.00" },
-  AmountWithCommissionUSD: { Letter: "I", Header: "Сумма сделки с учётом комиссии, USD", Format: "0.00" },
-  AmountWithCommissionRUR: { Letter: "J", Header: "Сумма сделки с учётом комиссии, руб.", Format: "0.000000" },
+  # Total:                   { Letter: "A" },
+  InstrumentCaption:       { Letter: "A", Header: "Фьючерсный контракт" },
+  Date:                    { Letter: "B", Header: "Дата", Format: "dd.mm.yyyy" },
+  USDRate:                 { Letter: "C", Header: "Курс USD ЦБ РФ", Format: "0.0000" },
+  Quantity:                { Letter: "D", Header: "Кол-во", Format: "0" },
+  Price:                   { Letter: "E", Header: "Цена фьючерса" },
+  # AmountUSD:               { Letter: "F", Header: "Сумма сделки, USD", Format: "0.00" },
+  # AmountUSD:               { Letter: "F", Header: "Сумма сделки, USD", Format: "0.00" },
+  CommissionUSD:           { Letter: "F", Header: "Комиссия, USD", Format: "0.00" },
+  AmountWithCommissionUSD: { Letter: "G", Header: "Сумма сделки, USD", Format: "0.00" },
+  AmountWithCommissionRUR: { Letter: "H", Header: "Сумма сделки, руб.", Format: "0.00" },
 }
 
 class Hash
@@ -51,18 +51,19 @@ class ExcelReportGenerator
 
       @workbook = FastExcel.open(FILE_NAME_REPORT)
       @worksheet = @workbook.add_worksheet("Отчёт")
+      @worksheet.auto_width = true
       COLUMNS.each_value do
         _1[:Workbook] = @workbook
         _1[:Worksheet] = @worksheet
       end
 
-      col_Total = COLUMNS[:Total]
+      # col_Total = COLUMNS[:Total]
       col_InstrumentCaption = COLUMNS[:InstrumentCaption]
       col_Date = COLUMNS[:Date]
       col_USDRate = COLUMNS[:USDRate]
       col_Quantity = COLUMNS[:Quantity]
       col_Price = COLUMNS[:Price]
-      col_AmountUSD = COLUMNS[:AmountUSD]
+      # col_AmountUSD = COLUMNS[:AmountUSD]
       col_CommissionUSD = COLUMNS[:CommissionUSD]
       col_AmountWithCommissionUSD = COLUMNS[:AmountWithCommissionUSD]
       col_AmountWithCommissionRUR = COLUMNS[:AmountWithCommissionRUR]
@@ -78,7 +79,7 @@ class ExcelReportGenerator
         temp_executions = executions.select { |execution| execution.instrument == instrument }
         next if temp_executions.empty?
 
-        append_table_header
+        append_table_header("#4BACC6")
 
         row_number = @worksheet.last_row_number + 1
         instrument_first_row_number = row_number
@@ -86,45 +87,40 @@ class ExcelReportGenerator
 
         i = 0
         while i < temp_executions.size
-          date = temp_executions[i].date
+          execution = temp_executions[i]
+          date = execution.date
 
           col_Date.write(row_number, date.to_time + 86400)
           col_USDRate.write(row_number, USDRates.get_rate(date))
-          usd_rate_row_number = row_number
-
-          while i < temp_executions.size && temp_executions[i].date == date
-            execution = temp_executions[i]
-
-            col_Quantity.write(row_number, execution.signed_quantity)
-            col_Price.write(row_number, execution.price, get_format_price(execution))
-            
-            v = (execution.signed_quantity * execution.price * execution.multiplier).to_s('F')
-            if index = v.index('.')
-              raise if v.size - index - 1 > 2
-            end
-            col_AmountUSD.write_formula(row_number, "#{col_Quantity.get_cell_ref(row_number)} * #{col_Price.get_cell_ref(row_number)} * #{execution.multiplier}", get_format_amount_usd(execution))
-
-            col_CommissionUSD.write(row_number, -execution.commission)
-            col_AmountWithCommissionUSD.write_formula(row_number, "#{col_AmountUSD.get_cell_ref(row_number)} + #{col_CommissionUSD.get_cell_ref(row_number)}", get_format_amount_with_commission_usd(execution))
-            col_AmountWithCommissionRUR.write_formula(row_number, "#{col_AmountWithCommissionUSD.get_cell_ref(row_number)} * #{col_USDRate.get_cell_ref(usd_rate_row_number)}")
-            i += 1
-            row_number += 1
+          col_Quantity.write(row_number, -execution.signed_quantity)
+          col_Price.write(row_number, execution.price, get_format_price(execution))
+          
+          v = (execution.signed_quantity * execution.price * execution.multiplier).to_s('F')
+          if index = v.index('.')
+            raise if v.size - index - 1 > 2
           end
+          # col_AmountUSD.write_formula(row_number, "-#{col_Quantity.get_cell_ref(row_number)} * #{col_Price.get_cell_ref(row_number)} * #{execution.multiplier}", get_format_amount_usd(execution))
+
+          col_CommissionUSD.write(row_number, -execution.commission)
+          col_AmountWithCommissionUSD.write_formula(row_number, "-#{col_Quantity.get_cell_ref(row_number)} * #{col_Price.get_cell_ref(row_number)} * #{execution.multiplier} + #{col_CommissionUSD.get_cell_ref(row_number)}", get_format_amount_with_commission_usd(execution))
+          col_AmountWithCommissionRUR.write_formula(row_number, "ROUND(#{col_AmountWithCommissionUSD.get_cell_ref(row_number)} * #{col_USDRate.get_cell_ref(row_number)}, 2)")
+          i += 1
+          row_number += 1
         end
 
-        append_table_header
+        append_table_header("#4BACC6")
 
         row_number = @worksheet.last_row_number + 1
-        col_Total.write(row_number, "Сумма:")
-        col_Quantity.write_formula(row_number, "SUM(#{col_Quantity.get_cell_range_ref(instrument_first_row_number, row_number - 2)})")
-        col_AmountUSD.write_formula(row_number, "SUM(#{col_AmountUSD.get_cell_range_ref(instrument_first_row_number, row_number - 2)})")
-        col_CommissionUSD.write_formula(row_number, "SUM(#{col_CommissionUSD.get_cell_range_ref(instrument_first_row_number, row_number - 2)})")
-        col_AmountWithCommissionUSD.write_formula(row_number, "SUM(#{col_AmountWithCommissionUSD.get_cell_range_ref(instrument_first_row_number, row_number - 2)})")
-        col_AmountWithCommissionRUR.write_formula(row_number, "ROUNDUP(SUM(#{col_AmountWithCommissionRUR.get_cell_range_ref(instrument_first_row_number, row_number - 2)}), 2)")
+        col_InstrumentCaption.write(row_number, "Сумма:", @workbook.add_format(bg_color: "#C6EFCE"))
+        col_Quantity.write_formula(row_number, "SUM(#{col_Quantity.get_cell_range_ref(instrument_first_row_number, row_number - 2)})", @workbook.add_format(bg_color: "#C6EFCE"))
+        # col_AmountUSD.write_formula(row_number, "SUM(#{col_AmountUSD.get_cell_range_ref(instrument_first_row_number, row_number - 2)})")
+        # col_CommissionUSD.write_formula(row_number, "SUM(#{col_CommissionUSD.get_cell_range_ref(instrument_first_row_number, row_number - 2)})")
+        # col_AmountWithCommissionUSD.write_formula(row_number, "SUM(#{col_AmountWithCommissionUSD.get_cell_range_ref(instrument_first_row_number, row_number - 2)})")
+        col_AmountWithCommissionRUR.write_formula(row_number, "SUM(#{col_AmountWithCommissionRUR.get_cell_range_ref(instrument_first_row_number, row_number - 2)})", @workbook.add_format(bg_color: "#C6EFCE"))
 
         tax_base_cells << col_AmountWithCommissionRUR.get_cell_ref(row_number)
 
-        col_Total.write(row_number + 1, "")
+        col_InstrumentCaption.write(row_number + 1, "")
       end
 
       # row_number = @worksheet.last_row_number + 1
@@ -149,18 +145,18 @@ class ExcelReportGenerator
       # tax_base_cells << col_AmountWithCommissionRUR.get_cell_ref(row_number)
 
       row_number = @worksheet.last_row_number + 2
-      col_Total.write(row_number, "Налоговая база:")
+      col_InstrumentCaption.write(row_number, "Налоговая база:")
       col_AmountWithCommissionRUR.write_formula(row_number, tax_base_cells.join(" + "))
-      col_Total.write(row_number + 1, "Налог:")
-      col_AmountWithCommissionRUR.write_formula(row_number + 1, "ROUNDUP(#{col_AmountWithCommissionRUR.get_cell_ref(row_number)} * 0.13, 2)", @workbook.add_format(bg_color: "#D7E4BC"))
+      col_InstrumentCaption.write(row_number + 1, "Налог:")
+      col_AmountWithCommissionRUR.write_formula(row_number + 1, "ROUNDUP(#{col_AmountWithCommissionRUR.get_cell_ref(row_number)} * 0.13, 2)", @workbook.add_format(bg_color: "#FFCC99"))
 
       @workbook.close
     end
 
   private
 
-    def append_table_header
-      f = @workbook.add_format(bg_color: "#4BACC6")
+    def append_table_header(color)
+      f = @workbook.add_format(bg_color: color)
 
       row_number = @worksheet.last_row_number + 1
       COLUMNS.each_value { _1.write(row_number, _1[:Header], f) if _1[:Header] }
