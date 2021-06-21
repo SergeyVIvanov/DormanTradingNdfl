@@ -321,6 +321,7 @@ i = text_infos[0][0].index('BEGINNING BALANCE ')
 raise unless i
 i += 'BEGINNING BALANCE '.size
 balance = BigDecimal($blocks[text_infos[0][1][i]].text.gsub(',', ''))
+puts "Beginning balance: #{balance.to_money_string}"
 
 executions = []
 instrument_commissions = {}
