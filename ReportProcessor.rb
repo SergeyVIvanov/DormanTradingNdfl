@@ -7,6 +7,7 @@ require_relative "CommandLineParser"
 require_relative "Consts"
 require_relative "Execution"
 require_relative "ExcelReport"
+require_relative "PdfTextReader"
 
 class PdfBlock
   def initialize(s)
@@ -26,13 +27,7 @@ class PdfBlock
         @text = a[0]
         @x = a[1].to_f
         @y = a[2].to_f
-        @width = a[3].to_f
     end
-  end
-
-  def width
-    raise unless @kind == :Text
-    @width
   end
 
   def x
@@ -291,10 +286,10 @@ def read_table(text, block_indexes, table_header)
     index += table_header.size + 1
     i = block_indexes[index]
     left = $blocks[i].x
-    char_width = $blocks[i].width / $blocks[i].text.size
     i += 1 while $blocks[i].text.start_with?('-')
     block = $blocks[i - 1]
-    w = ((block.x + block.width - left) / char_width).round
+    char_width = 4.2 # (block.x - left) / 99
+    w = 118 # ((block.x + block.width - left) / char_width).round
     loop do
       break if $blocks[i].kind != :Text || $blocks[i].text == 'THE' || $blocks[i].text == '**' || $blocks[i].text == '*' && $blocks[i + 1].text == '*'
       line = ' ' * w
@@ -314,7 +309,7 @@ end
 
 $options = parse_command_line
 
-$blocks = File.readlines('D:/Trading/Reports_2021/a.txt').map { |line| PdfBlock.new(line) }
+$blocks = get_pdf_text_infos($options.dir_path).map { |line| PdfBlock.new(line) }
 text_infos = get_text_infos($blocks)
 
 i = text_infos[0][0].index('BEGINNING BALANCE ')
