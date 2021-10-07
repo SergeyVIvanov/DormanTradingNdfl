@@ -307,6 +307,8 @@ def read_table(text, block_indexes, table_header)
   lines
 end
 
+t = Time.now
+
 $options = parse_command_line
 
 $blocks = get_pdf_text_infos($options.dir_path).map { |line| PdfBlock.new(line) }
@@ -343,6 +345,7 @@ while action_index < action_infos.size
     balance += action_info[2]
     investments += action_info[2]
   when :ActionKind_MarketDataFee
+    puts "#{action_info[0]}: #{(-action_info[2]).to_money_string}"
     balance -= action_info[2]
     profit -= action_info[2]
   when :ActionKind_Withdrawal
@@ -382,3 +385,5 @@ puts "Withdrawals: #{withdrawals.to_money_string}"
 
 executions.sort!
 ExcelReportGenerator.generate(executions, open_position_executions, action_infos)
+
+puts Time.now - t
