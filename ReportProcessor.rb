@@ -100,6 +100,11 @@ def get_text_infos(blocks)
   text_infos
 end
 
+def parse_date(s)
+  raise unless s =~ /\A\d{4}\-\d{2}\-\d{2}\z/
+  Date.new(s[0,4].to_i, s[5,2].to_i, s[8,2].to_i)
+end
+
 def process_table_confirmation(text_info, instrument_commissions)
   temp_instrument_commissions = {}
 
@@ -158,7 +163,7 @@ def process_tables_journal(text_infos)
           break
         end
       end
-      raise unless action_kind
+      raise(line) unless action_kind
       action_infos << [date, action_kind, amount]
     end
   end
@@ -202,7 +207,7 @@ def process_table_open_positions(text_info, instrument_commissions)
       instrument_commission = instrument_commissions[date][instrument]
       raise unless instrument_commission
 
-      executions << Execution.new(date, instrument, price, quantity, is_long, instrument_commission, instrument_precision)
+      executions << Execution.new(date, instrument, instrument[7..], price, quantity, is_long, instrument_commission, instrument_precision)
 
       i += 1
     end
@@ -254,7 +259,7 @@ def process_table_purchase_and_sale(text_info, instrument_commissions)
       instrument_commission = instrument_commissions[date][instrument]
       raise unless instrument_commission
 
-      temp_executions << Execution.new(date, instrument, price, quantity, is_long, instrument_commission, instrument_precision)
+      temp_executions << Execution.new(date, instrument, instrument[7..], price, quantity, is_long, instrument_commission, instrument_precision)
 
       sum += price * quantity * (is_long ? -1 : 1)
 
@@ -311,50 +316,89 @@ t = Time.now
 
 $options = parse_command_line
 
-$blocks = get_pdf_text_infos($options.dir_path).map { |line| PdfBlock.new(line) }
-text_infos = get_text_infos($blocks)
+if $options.ntc
+  executions = []
+  lines = File.readlines($options.path)
+  balance = BigDecimal(lines[0].chomp)
+  i = 1
+  while i < lines.size
+    line = lines[i].chomp
+    break if line.empty?
+    a = line.split(',')
 
-i = text_infos[0][0].index('BEGINNING BALANCE ')
-raise unless i
-i += 'BEGINNING BALANCE '.size
-balance = BigDecimal($blocks[text_infos[0][1][i]].text.gsub(',', ''))
-puts "Beginning balance: #{balance.to_money_string}"
+    execution = Execution.new(parse_date(a[0]), a[1], a[2], BigDecimal(a[3]), a[4].to_i, a[5] == 'true', BigDecimal(a[6]), a[7].to_i)
+    execution.multiplier = BigDecimal(a[8])
+    executions << execution
 
-executions = []
-instrument_commissions = {}
-text_infos.each do |text_info|
-  process_table_confirmation(text_info, instrument_commissions)
-  executions += process_table_purchase_and_sale(text_info, instrument_commissions)
+    i += 1
+  end
+
+  action_infos = []
+  i += 1
+  while i < lines.size
+    a = lines[i].chomp.split(',')
+    action_infos << [parse_date(a[0]), a[1].to_sym, BigDecimal(a[2])]
+    i += 1
+  end
+
+  open_position_executions = []
+else
+  $blocks = get_pdf_text_infos($options.path).map { |line| PdfBlock.new(line) }
+  text_infos = get_text_infos($blocks)
+
+  i = text_infos[0][0].index('BEGINNING BALANCE ')
+  raise unless i
+  i += 'BEGINNING BALANCE '.size
+  balance = BigDecimal($blocks[text_infos[0][1][i]].text.gsub(',', ''))
+
+  executions = []
+  instrument_commissions = {}
+  text_infos.each do |text_info|
+    process_table_confirmation(text_info, instrument_commissions)
+    executions += process_table_purchase_and_sale(text_info, instrument_commissions)
+  end
+
+  open_position_executions = process_table_open_positions(text_infos.last, instrument_commissions)
+
+  action_infos = process_tables_journal(text_infos)
 end
 
-open_position_executions = process_table_open_positions(text_infos.last, instrument_commissions)
+puts "Beginning balance: #{balance.to_money_string}"
 
-action_infos = process_tables_journal(text_infos)
-
-#################################################################################################################
+# balance
+income = BigDecimal("0")
 investments = BigDecimal("0")
-withdrawals = BigDecimal("0")
+outcome = BigDecimal("0")
 profit = BigDecimal("0")
+withdrawals = BigDecimal("0")
 
 action_index = 0
 while action_index < action_infos.size
   action_info = action_infos[action_index]
+  amount = action_info[2]
 
   case action_info[1]
   when :ActionKind_Deposit
-    balance += action_info[2]
-    investments += action_info[2]
+    balance += amount
+    income += amount
+    investments += amount
   when :ActionKind_MarketDataFee
-    puts "#{action_info[0]}: #{(-action_info[2]).to_money_string}"
-    balance -= action_info[2]
-    profit -= action_info[2]
+    # puts "#{action_info[0]}: #{(-amount).to_money_string}"
+    balance -= amount
+    outcome += amount
+    profit -= amount
   when :ActionKind_Withdrawal
-    balance -= action_info[2]
-    withdrawals += action_info[2]
-    #profit -= action_info[2]
+    balance -= amount
+    outcome += amount
+    withdrawals += amount
+  when :ActionKind_TransferToNTC
+    balance -= amount
+    outcome += amount
+    withdrawals += amount
   when :ActionKind_WithdrawalFee
-    balance -= action_info[2]
-    profit -= action_info[2]
+    balance -= amount
+    outcome += amount
+    profit -= amount
   else
     raise
   end
@@ -362,22 +406,63 @@ while action_index < action_infos.size
   action_index += 1
 end
 
+open_executions = {}
 execution_index = 0
 while execution_index < executions.size
   execution = executions[execution_index]
 
-  delta = execution.amount - execution.commission
-  balance += delta
-  profit += delta
+  balance -= execution.commission
+  outcome += execution.commission
+  profit -= execution.commission
+  open_executions[execution.instrument_base_name] = [] unless open_executions.has_key?(execution.instrument_base_name)
+  temp_executions = open_executions[execution.instrument_base_name]
+  i = 0
+  while i < temp_executions.size
+    temp_execution = temp_executions[i]
+    if temp_execution.long? != execution.long?
+      temp_profit = (execution.price - temp_execution.price) * execution.multiplier * [temp_execution.quantity, execution.quantity].min
+      temp_profit = -temp_profit unless temp_execution.long?
+      balance += temp_profit
+      if temp_profit > 0
+        income += temp_profit
+      else
+        outcome -= temp_profit
+      end
+      profit += temp_profit
+      case temp_execution.quantity <=> execution.quantity
+      when -1
+        execution = execution.clone
+        execution.quantity -= temp_execution.quantity
+        temp_executions.delete_at(i)
+      when 0
+        execution = nil
+        temp_executions.delete_at(i)
+        break
+      when 1
+        temp_execution = temp_execution.clone
+        temp_execution.quantity -= execution.quantity
+        temp_executions[i] = temp_execution
+        execution = nil
+        break
+      end
+    else
+      i += 1
+    end
+  end
+  temp_executions << execution unless execution.nil?
 
   execution_index += 1
 end
+p open_executions
 
 open_position_executions.each do |execution|
   balance -= execution.commission
+  outcome -= execution.commission
   profit -= execution.commission
 end
 
+puts "Income: #{income.to_money_string}"
+puts "Outcome: #{outcome.to_money_string}"
 puts "Ending balance: #{balance.to_money_string}"
 puts "Total profit: #{profit.to_money_string}"
 puts "Investments: #{investments.to_money_string}, #{(investments - withdrawals).to_money_string} (after withdrawals)"

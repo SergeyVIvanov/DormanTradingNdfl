@@ -2,7 +2,9 @@ require "bigdecimal"
 
 class BigDecimal
   def to_money_string
-    truncate.to_s + "." + sprintf("%02d", (frac.abs * 100).truncate)
+    res = truncate.abs.to_s
+    res = '-' + res if self < 0
+    res + "." + sprintf("%02d", (frac.abs * 100).truncate)
   end
 end
 

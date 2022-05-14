@@ -1,12 +1,13 @@
 require_relative "RubyClassPatches"
 
 class Execution
-  attr_reader :date, :instrument, :instrument_commission, :instrument_precision, :is_long, :price
+  attr_reader :date, :instrument, :instrument_base_name, :instrument_commission, :instrument_precision, :price
   attr_accessor :multiplier, :quantity
 
-  def initialize(date, instrument, price, quantity, is_long, instrument_commission, instrument_precision)
+  def initialize(date, instrument, instrument_base_name, price, quantity, is_long, instrument_commission, instrument_precision)
     @date = date
     @instrument = instrument
+    @instrument_base_name = instrument_base_name
     @price = price
     @quantity = quantity
     @is_long = is_long

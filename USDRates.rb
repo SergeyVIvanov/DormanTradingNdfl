@@ -18,7 +18,7 @@ module USDRates
 
     index = (date - @@first_date).to_i
     index -= 1 while index >= 0 && !USD_RATES[index]
-    raise(date.to_s) if index < 0
+    raise(date.to_s + ', ' + @@first_date.to_s) if index < 0
     USD_RATES[index]
   end
 
@@ -47,6 +47,7 @@ module USDRates
 
   def self.update_rates(first_date, last_date)
     return if @@first_date && first_date >= @@first_date && last_date <= @@last_date
+    first_date -= 10
 
     uri = URI("http://www.cbr.ru/scripts/XML_dynamic.asp?date_req1=#{uri_encode_date_param_value(first_date)}&date_req2=#{uri_encode_date_param_value(last_date)}&VAL_NM_RQ=R01235")
     # puts uri.to_s

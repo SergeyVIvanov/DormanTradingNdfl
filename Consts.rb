@@ -6,9 +6,10 @@ TABLE_HEADER_PURCHASE_AND_SALE = 'TRADE SETTL AT LONG SHORT CONTRACT DESCRIPTION
 
 JOURNAL_ACTIONS = {
   'DATA FEE' => :ActionKind_MarketDataFee,
+  'TRAN TO NINJATRADER CLEARING' => :ActionKind_TransferToNTC,
   'WT CREDIT' => :ActionKind_Deposit,
   'WT DEBIT' => :ActionKind_Withdrawal,
-  'WT FEE' => :ActionKind_WithdrawalFee
+  'WT FEE' => :ActionKind_WithdrawalFee,
 }
 
 FILE_NAME_REPORT = "Report.xlsx"

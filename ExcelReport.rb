@@ -208,15 +208,6 @@ class ExcelReportGenerator
     end
 
     def get_precision_amount_usd(execution)
-      # precision = execution.instrument_precision
-      # raise unless execution.multiplier.frac.zero?
-      # s = execution.multiplier.truncate.to_s
-      # while s.end_with?('0')
-      #   precision -= 1
-      #   s = s[0..-2]
-      # end
-      # precision = 2 if precision < 2
-      # precision
       2
     end
 
