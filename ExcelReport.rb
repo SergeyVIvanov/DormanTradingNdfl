@@ -3,14 +3,11 @@ require_relative "Consts"
 require_relative "USDRates"
 
 COLUMNS = {
-  # Total:                   { Letter: "A" },
   InstrumentCaption:       { Letter: "A", Header: "Фьючерсный контракт" },
   Date:                    { Letter: "B", Header: "Дата", Format: "dd.mm.yyyy" },
   USDRate:                 { Letter: "C", Header: "Курс USD ЦБ РФ", Format: "0.0000" },
   Quantity:                { Letter: "D", Header: "Кол-во", Format: "0" },
   Price:                   { Letter: "E", Header: "Цена фьючерса" },
-  # AmountUSD:               { Letter: "F", Header: "Сумма сделки, USD", Format: "0.00" },
-  # AmountUSD:               { Letter: "F", Header: "Сумма сделки, USD", Format: "0.00" },
   CommissionUSD:           { Letter: "F", Header: "Комиссия, USD", Format: "0.00" },
   AmountWithCommissionUSD: { Letter: "G", Header: "Сумма сделки, USD", Format: "0.00" },
   AmountWithCommissionRUR: { Letter: "H", Header: "Сумма сделки, руб.", Format: "0.00" },
@@ -76,7 +73,7 @@ class ExcelReportGenerator
 
       instruments = get_instruments(executions)
       instruments.each do |instrument|
-        temp_executions = executions.select { |execution| execution.instrument == instrument }
+        temp_executions = executions.select { |execution| execution.instrument_base_name == instrument }
         next if temp_executions.empty?
 
         append_table_header("#4BACC6")
@@ -145,10 +142,12 @@ class ExcelReportGenerator
       # tax_base_cells << col_AmountWithCommissionRUR.get_cell_ref(row_number)
 
       row_number = @worksheet.last_row_number + 2
-      col_InstrumentCaption.write(row_number, "Налоговая база:")
-      col_AmountWithCommissionRUR.write_formula(row_number, tax_base_cells.join(" + "))
-      col_InstrumentCaption.write(row_number + 1, "Налог:")
-      col_AmountWithCommissionRUR.write_formula(row_number + 1, "ROUNDUP(#{col_AmountWithCommissionRUR.get_cell_ref(row_number)} * 0.13, 2)", @workbook.add_format(bg_color: "#FFCC99"))
+      f1 = @workbook.add_format(bold: true, font_size: 14)
+      f2 = @workbook.add_format(font_size: 14)
+      col_InstrumentCaption.write(row_number, "Налоговая база:", f1)
+      col_AmountWithCommissionRUR.write_formula(row_number, tax_base_cells.join(" + "), f2)
+      col_InstrumentCaption.write(row_number + 1, "Налог:", f1)
+      col_AmountWithCommissionRUR.write_formula(row_number + 1, "ROUNDUP(#{col_AmountWithCommissionRUR.get_cell_ref(row_number)} * 0.13, 2)", @workbook.add_format(bg_color: "#FFCC99", font_size: 14))
 
       @workbook.close
     end
@@ -179,25 +178,8 @@ class ExcelReportGenerator
     end
 
     def get_instruments(executions)
-      instruments = executions.map { _1.instrument }
-      instruments.sort! do
-        is_formalized1 = _1 =~ FORMALIZED_INSTRUMENT
-        is_formalized2 = _2 =~ FORMALIZED_INSTRUMENT
-        if is_formalized1 && is_formalized2
-          instrument1 = _1[7..-1].strip
-          instrument2 = _2[7..-1].strip
-          res = instrument1 <=> instrument2
-          res = _1[4, 2].to_i <=> _2[4, 2].to_i if res == 0
-          res = MONTH_SHORTS.index(_1[0, 3]) <=> MONTH_SHORTS.index(_2[0, 3]) if res == 0
-          res
-        elsif is_formalized1
-          -1
-        elsif is_formalized2
-          1
-        else
-          _1 <=> _2
-        end
-      end
+      instruments = executions.map { _1.instrument_base_name }
+      instruments.sort!
       instruments.uniq
     end
 
