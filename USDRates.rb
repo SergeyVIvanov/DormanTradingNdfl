@@ -52,7 +52,8 @@ module USDRates
     uri = URI("http://www.cbr.ru/scripts/XML_dynamic.asp?date_req1=#{uri_encode_date_param_value(first_date)}&date_req2=#{uri_encode_date_param_value(last_date)}&VAL_NM_RQ=R01235")
     # puts uri.to_s
     res = Net::HTTP.get_response(uri)
-    abort("Cannot update USD rates".red) unless res.is_a?(Net::HTTPSuccess)
+    # p res
+    abort("Cannot update USD rates".red + "\n" + uri.to_s + "\n" + res.class.to_s) unless res.is_a?(Net::HTTPSuccess)
 
     USD_RATES.clear
     @@first_date = nil

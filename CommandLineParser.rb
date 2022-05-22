@@ -18,7 +18,6 @@ def parse_command_line
     abort("There is an empty argument in the command line.") end
 
   options = CommandLineParser.parse(ARGV[0..-2]) do
-    opt :extendedReport, :optional, :flag
     opt :ntc, :optional, :flag
   end
 
@@ -31,8 +30,7 @@ def parse_command_line
   path = File.realpath(path).encode('utf-8')
 
   create_options(
-    extended_report: options[:extendedReport],
     ntc: options[:ntc],
-    path: path
+    path: path,
   )
 end

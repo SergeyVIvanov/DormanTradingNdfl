@@ -1,22 +1,22 @@
 require_relative "RubyClassPatches"
 
 class Execution
-  attr_reader :date, :instrument, :instrument_base_name, :instrument_commission, :instrument_precision, :price
+  attr_reader :base_commission, :date, :instrument, :instrument_kind, :instrument_precision, :price
   attr_accessor :multiplier, :quantity
 
-  def initialize(date, instrument, instrument_base_name, price, quantity, is_long, instrument_commission, instrument_precision)
+  def initialize(date, instrument, instrument_kind, price, quantity, is_long, base_commission, instrument_precision)
     @date = date
     @instrument = instrument
-    @instrument_base_name = instrument_base_name
+    @instrument_kind = instrument_kind
     @price = price
     @quantity = quantity
     @is_long = is_long
-    @instrument_commission = instrument_commission
+    @base_commission = base_commission
     @instrument_precision = instrument_precision
   end
 
   def <=>(other)
-    res = @instrument_base_name <=> other.instrument_base_name
+    res = @instrument <=> other.instrument
     res = (date <=> other.date) if res == 0
     # res = @instrument_date <=> other.instrument_date if res == 0
     res = @price <=> other.price if res == 0
@@ -34,16 +34,8 @@ class Execution
     (self <=> other) == 0
   end
 
-  def commission
-    @instrument_commission * @quantity
-  end
-
   def get_amount(signed_quantity)
     @price * @multiplier * signed_quantity
-  end
-
-  def get_commission(quantity)
-    @instrument_commission * quantity
   end
 
   def long?

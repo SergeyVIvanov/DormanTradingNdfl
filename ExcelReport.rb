@@ -13,6 +13,21 @@ COLUMNS = {
   AmountWithCommissionRUR: { Letter: "H", Header: "Сумма сделки, руб.", Format: "0.00" },
 }
 
+COLUMNS_MONEY_MOVEMENT = {
+  InstrumentCaption: { Letter: "A", Header: "Инструмент", AltHeader: "Описание" },
+  InstrumentKind:    { Letter: "B", Header: "Тип инструмента", AltHeader: "Дата" },
+  DateOpen:          { Letter: "C", Header: "Дата открытия", Format: "dd.mm.yyyy" },
+  PriceOpen:         { Letter: "D", Header: "Цена открытия", Format: "0.00" },
+  DateClose:         { Letter: "E", Header: "Дата закрытия", Format: "dd.mm.yyyy" },
+  PriceClose:        { Letter: "F", Header: "Цена закрытия", Format: "0.00" },
+  Quantity:          { Letter: "G", Header: "Количество", Format: "0" },
+  Multiplier:        { Letter: "H", Header: "Стоимость пункта, USD" },
+  GrossProfit:       { Letter: "I", Header: "Прибыль по сделке без учёта комиссии, USD", Format: "0.00" },
+  Commission:        { Letter: "J", Header: "Комиссия, USD", Format: "0.00" },
+  Income:            { Letter: "K", Header: "Приход, USD", AltHeader: "Приход, USD", Format: "0.00" },
+  Outcome:           { Letter: "L", Header: "Расход, USD", AltHeader: "Расход, USD", Format: "0.00" },
+}
+
 class Hash
   def get_cell_range_ref(row_number_from, row_number_to)
     "#{self[:Letter]}#{row_number_from + 1}:#{self[:Letter]}#{row_number_to + 1}"
@@ -67,7 +82,7 @@ class ExcelReportGenerator
 
       tax_base_cells = []
 
-      apply_column_formats
+      apply_column_formats(COLUMNS)
 
       update_usd_rates(executions, open_position_executions, action_infos)
 
@@ -76,7 +91,7 @@ class ExcelReportGenerator
         temp_executions = executions.select { |execution| execution.instrument_base_name == instrument }
         next if temp_executions.empty?
 
-        append_table_header("#4BACC6")
+        append_table_header(COLUMNS, "#4BACC6")
 
         row_number = @worksheet.last_row_number + 1
         instrument_first_row_number = row_number
@@ -105,7 +120,7 @@ class ExcelReportGenerator
           row_number += 1
         end
 
-        append_table_header("#4BACC6")
+        append_table_header(COLUMNS, "#4BACC6")
 
         row_number = @worksheet.last_row_number + 1
         col_InstrumentCaption.write(row_number, "Сумма:", @workbook.add_format(bg_color: "#C6EFCE"))
@@ -152,17 +167,133 @@ class ExcelReportGenerator
       @workbook.close
     end
 
-  private
+    def generate_money_movement_report(company_name, beginning_balance, executions, open_executions, action_infos)
+      update_usd_rates(executions, open_executions, action_infos)
 
-    def append_table_header(color)
-      f = @workbook.add_format(bg_color: color)
+      File.delete(FILE_NAME_REPORT_MONEY_MOVEMENT) if File.exists?(FILE_NAME_REPORT_MONEY_MOVEMENT)
 
+      @workbook = FastExcel.open(FILE_NAME_REPORT_MONEY_MOVEMENT)
+      @worksheet = @workbook.add_worksheet("Пояснительная записка")
+      @worksheet.auto_width = true
+      COLUMNS_MONEY_MOVEMENT.each_value do
+        _1[:Workbook] = @workbook
+        _1[:Worksheet] = @worksheet
+      end
+
+      col_InstrumentCaption = COLUMNS_MONEY_MOVEMENT[:InstrumentCaption]
+      col_InstrumentKind = COLUMNS_MONEY_MOVEMENT[:InstrumentKind]
+      col_DateOpen = COLUMNS_MONEY_MOVEMENT[:DateOpen]
+      col_PriceOpen = COLUMNS_MONEY_MOVEMENT[:PriceOpen]
+      col_DateClose = COLUMNS_MONEY_MOVEMENT[:DateClose]
+      col_PriceClose = COLUMNS_MONEY_MOVEMENT[:PriceClose]
+      col_Quantity = COLUMNS_MONEY_MOVEMENT[:Quantity]
+      col_Multiplier = COLUMNS_MONEY_MOVEMENT[:Multiplier]
+      col_GrossProfit = COLUMNS_MONEY_MOVEMENT[:GrossProfit]
+      col_Commission = COLUMNS_MONEY_MOVEMENT[:Commission]
+      col_Income = COLUMNS_MONEY_MOVEMENT[:Income]
+      col_Outcome = COLUMNS_MONEY_MOVEMENT[:Outcome]
+
+      apply_column_formats(COLUMNS_MONEY_MOVEMENT)
+
+      f1 = @workbook.add_format(bold: true, font_size: 14)
+      f2 = @workbook.add_format(font_size: 14, num_format: '0.00')
+      
+      income_cells = []
+      outcome_cells = []
+
+      col_InstrumentCaption.write(0, company_name, f1)
+      beginning_balance_row_number = 2
+      col_InstrumentCaption.write(2, "Начальный баланс, USD:", f1)
+      col_InstrumentKind.write(2, beginning_balance, f2)
+      col_InstrumentCaption.write(4, "Торговые операции:", f1)
+
+      append_table_header(COLUMNS_MONEY_MOVEMENT, "#4BACC6")
       row_number = @worksheet.last_row_number + 1
-      COLUMNS.each_value { _1.write(row_number, _1[:Header], f) if _1[:Header] }
+      sum_first_row_number = row_number
+      open_executions = process_executions(executions, open_executions) do |instrument, instrument_kind, date_open, price_open, date_close, price_close, quantity, commission, profit, instrument_multiplier, instrument_precision|
+        col_InstrumentCaption.write(row_number, instrument)
+        col_InstrumentKind.write(row_number, instrument_kind)
+        col_DateOpen.write(row_number, date_open.to_time + 86400)
+        col_PriceOpen.write(row_number, price_open, get_number_format(instrument_precision))
+        col_DateClose.write(row_number, date_close.to_time + 86400)
+        col_PriceClose.write(row_number, price_close, get_number_format(instrument_precision))
+        col_Quantity.write(row_number, quantity)
+        col_Multiplier.write(row_number, instrument_multiplier)
+        col_GrossProfit.write_formula(row_number, "(#{col_PriceClose.get_cell_ref(row_number)} - #{col_PriceOpen.get_cell_ref(row_number)}) * #{col_Quantity.get_cell_ref(row_number)} * #{col_Multiplier.get_cell_ref(row_number)}")
+        col_Commission.write(row_number, commission)
+
+        if profit > 0
+          col_Income.write_formula(row_number, "#{col_GrossProfit.get_cell_ref(row_number)}")
+          col_Outcome.write_formula(row_number, "#{col_Commission.get_cell_ref(row_number)}")
+        else
+          col_Outcome.write_formula(row_number, "-#{col_GrossProfit.get_cell_ref(row_number)} + #{col_Commission.get_cell_ref(row_number)}")
+        end
+
+        row_number += 1
+      end
+      append_table_header(COLUMNS_MONEY_MOVEMENT, "#4BACC6")
+      row_number = @worksheet.last_row_number + 1
+      col_InstrumentCaption.write(row_number, "Сумма:")
+      col_Income.write_formula(row_number, "SUM(#{col_Income.get_cell_range_ref(sum_first_row_number, row_number - 2)})")
+      col_Outcome.write_formula(row_number, "SUM(#{col_Outcome.get_cell_range_ref(sum_first_row_number, row_number - 2)})")
+      income_cells << col_Income.get_cell_ref(row_number)
+      outcome_cells << col_Outcome.get_cell_ref(row_number)
+
+      row_number += 2
+      col_InstrumentCaption.write(row_number, "Неторговые операции:", f1)
+      row_number += 1
+      append_table_header(COLUMNS_MONEY_MOVEMENT, "#4BACC6", :AltHeader)
+      row_number += 1
+      sum_first_row_number = row_number
+      action_infos.each do |action_info|
+        action_caption, money_column = case action_info[1]
+        when :ActionKind_Deposit
+          ["Пополнение брокерского счёта", col_Income]
+        when :ActionKind_MarketDataFee
+          ["Плата за подписку на рыночные данные", col_Outcome]
+        when :ActionKind_Withdrawal, :ActionKind_TransferToNTC
+          ["Вывод средств с брокерского счёта", col_Outcome]
+        when :ActionKind_WithdrawalFee
+          ["Комиссия за вывод средств с брокерского счёта", col_Outcome]
+        else
+          raise
+        end
+
+        col_InstrumentCaption.write(row_number, action_caption)
+        col_InstrumentKind.write(row_number, action_info[0].to_time + 86400, @workbook.add_format(num_format: "dd.mm.yyyy"))
+        money_column.write(row_number, action_info[2])
+
+        row_number += 1
+      end
+      append_table_header(COLUMNS_MONEY_MOVEMENT, "#4BACC6", :AltHeader)
+      row_number = @worksheet.last_row_number + 1
+      col_InstrumentCaption.write(row_number, "Сумма:")
+      col_Income.write_formula(row_number, "SUM(#{col_Income.get_cell_range_ref(sum_first_row_number, row_number - 2)})")
+      col_Outcome.write_formula(row_number, "SUM(#{col_Outcome.get_cell_range_ref(sum_first_row_number, row_number - 2)})")
+      income_cells << col_Income.get_cell_ref(row_number)
+      outcome_cells << col_Outcome.get_cell_ref(row_number)
+
+      row_number += 2
+      col_InstrumentCaption.write(row_number, "Приход, USD:", f1)
+      col_InstrumentKind.write_formula(row_number, income_cells.join(" + "), f2)
+      col_InstrumentCaption.write(row_number + 1, "Расход, USD:", f1)
+      col_InstrumentKind.write_formula(row_number + 1, outcome_cells.join(" + "), f2)
+      col_InstrumentCaption.write(row_number + 2, "Конечный баланс, USD:", f1)
+      col_InstrumentKind.write_formula(row_number + 2, "#{col_InstrumentKind.get_cell_ref(beginning_balance_row_number)} + #{col_InstrumentKind.get_cell_ref(row_number)} - #{col_InstrumentKind.get_cell_ref(row_number + 1)}", f2)
+
+      @workbook.close
     end
 
-    def apply_column_formats
-      COLUMNS.each_value { _1.set_format(_1[:Format]) if _1[:Format] }
+  private
+
+    def append_table_header(columns, color, header_key = :Header)
+      f = @workbook.add_format(bg_color: color)
+      row_number = @worksheet.last_row_number + 1
+      columns.each_value { _1.write(row_number, _1[header_key].to_s, f) }
+    end
+
+    def apply_column_formats(columns)
+      columns.each_value { _1.set_format(_1[:Format]) if _1[:Format] }
     end
 
     def get_format_amount_usd(execution)
